@@ -1,6 +1,8 @@
 package org.jponte
 
-import io.circe._, io.circe.generic.auto._, io.circe.parser._, io.circe.syntax._
+import io.circe._
+import io.circe.generic.auto._
+import io.circe.syntax._
 
 case class Position(x: Int, y: Int)
 

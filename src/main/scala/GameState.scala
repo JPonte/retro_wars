@@ -1,13 +1,15 @@
 package org.jponte
 
-import io.circe._, io.circe.generic.auto._, io.circe.parser._, io.circe.syntax._
+import io.circe._
+import io.circe.generic.auto._
+import io.circe.syntax._
 import monocle.syntax.all._
-import GameState._
-import scala.annotation.tailrec
 
 case class Deployment(unit: Character, player: Int, health: Int = 100, canMove: Boolean = true, hasAction: Boolean = true)
 
-case class GameState(tileMap: TileMap, units: Map[Position, Deployment], players: Seq[Player], currentPlayer: Int) {
+case class CityOwnership(player: Int, remaining: Int = 20)
+
+case class GameState(tileMap: TileMap, units: Map[Position, Deployment], cities: Map[Position, CityOwnership], players: Seq[Player], currentPlayer: Int) {
   def runAction(action: Action): Either[String, GameState] = action match {
     case Move(from, target) =>
       val deployment = units.get(from)
@@ -15,8 +17,8 @@ case class GameState(tileMap: TileMap, units: Map[Position, Deployment], players
       (deployment, targetDeployment) match {
         case (None, _) => Left("No unit in this position")
         case (_, Some(_)) => Left("Target position is occupied")
-        case (Some(Deployment(_, p, _, _, _)), _) if p != currentPlayer => Left("Unit doesn't belong to the current player")
-        case (Some(Deployment(_, _, _, false, _)), _) => Left("Unit already moved this turn")
+        case (Some(d), _) if d.player != currentPlayer => Left("Unit doesn't belong to the current player")
+        case (Some(d), _) if !d.canMove => Left("Unit already moved this turn")
         case (Some(d), None) =>
           val newState = this.focus(_.units)
             .at(from)
@@ -32,16 +34,16 @@ case class GameState(tileMap: TileMap, units: Map[Position, Deployment], players
       (deployment, targetDeployment) match {
         case (None, _) => Left("No unit in this position")
         case (_, None) => Left("Target position has no one")
-        case (Some(Deployment(_, p, _, _, _)), _) if p != currentPlayer => Left("Unit doesn't belong to the current player")
-        case (Some(Deployment(_, _, _, _, false)), _) => Left("Unit already moved this turn")
-        case (_, Some(Deployment(_, p, _, _, _))) if p == currentPlayer => Left("Target unit is allied")
-        case (Some(Deployment(c1, _, _, _, _)), Some(_)) if !ranges(tileMap, from).filter(c => c._2 > 0 && c._2 <= c1.range).contains(target) =>
+        case (Some(d), _) if d.player != currentPlayer => Left("Unit doesn't belong to the current player")
+        case (Some(d), _) if !d.hasAction => Left("Unit already acted this turn")
+        case (_, Some(d)) if d.player == currentPlayer => Left("Target unit is allied")
+        case (Some(d), Some(_)) if !Utils.ranges(tileMap, from).filter(c => c._2 > 0 && c._2 <= d.unit.range).contains(target) =>
           Left("Target not in range")
-        case (Some(Deployment(c1, p1, h1, _, _)), Some(Deployment(c2, p2, h2, _, _))) =>
+        case (Some(d1), Some(d2)) =>
           val newState = this
             .focus(_.units)
             .at(target)
-            .modify(_.map(_.copy(health = h2 - c1.baseAttack)).filter(_.health > 0))
+            .replace(Some(d2.copy(health = d2.health - d1.unit.baseAttack)).filter(_.health > 0))
             .focus(_.units)
             .at(from)
             .modify(_.map(_.copy(canMove = false, hasAction = false)))
@@ -55,6 +57,34 @@ case class GameState(tileMap: TileMap, units: Map[Position, Deployment], players
         .focus(_.currentPlayer)
         .modify(currentPlayer => (currentPlayer + 1) % players.size)
       Right(newState)
+    case PurchaseUnit(from, character) =>
+      val tile = tileMap.tileAt(from)
+      val deployment = units.get(from)
+      (tile, deployment) match {
+        case (_, Some(d)) if d.player != currentPlayer => Left("Unit doesn't belong to the current player")
+        case (Some(tile), None) if tile == Tile.Factory =>
+          val newState = this
+            .focus(_.units)
+            .at(from)
+            .modify(_ => Some(Deployment(character, currentPlayer, canMove = false, hasAction = false)))
+          Right(newState)
+        case _ => Left("Invalid move")
+      }
+    case CaptureCity(from) =>
+      val tile = tileMap.tileAt(from)
+      val deployment = units.get(from)
+      val cityOwnership = cities.get(from)
+      (tile, deployment, cityOwnership) match {
+        case (_, Some(d), _) if d.player != currentPlayer => Left("Unit doesn't belong to the current player")
+        case (_, Some(d), _) if !d.hasAction => Left("Unit already acted this turn")
+        case (Some(t), Some(d), o) if Tile.cities.contains(t) && Character.infantryCharacters(d.unit) && o.forall(_.remaining > 0) =>
+          val newState = this.focus(_.cities).at(from).modify {
+            case Some(value) if value.player == currentPlayer => Some(value.copy(remaining = Math.min(value.remaining - (d.health / 10), 0)))
+            case _ => Some(CityOwnership(currentPlayer, 20 - (d.health / 10)))
+          }
+          Right(newState)
+        case _ => Left("Invalid move")
+      }
   }
 
   def show: String =
@@ -70,6 +100,7 @@ object GameState {
   implicit val encodeGameState: Encoder[GameState] = (gs: GameState) => Json.obj(
     ("tileMap", gs.tileMap.asJson),
     ("units", gs.units.toSeq.asJson),
+    ("cities", gs.cities.toSeq.asJson),
     ("players", gs.players.toSeq.asJson),
     ("currentPlayer", Json.fromInt(gs.currentPlayer)),
   )
@@ -78,32 +109,10 @@ object GameState {
     for {
       tiles <- c.downField("tileMap").as[TileMap]
       units <- c.downField("units").as[Seq[(Position, Deployment)]]
+      cities <- c.downField("cities").as[Seq[(Position, CityOwnership)]]
       players <- c.downField("players").as[Seq[Player]]
       currentPlayer <- c.downField("currentPlayer").as[Int]
-    } yield GameState(tiles, units.toMap, players, currentPlayer)
-
-  //TODO: move out of here
-  def ranges(tileMap: TileMap, from: Position): Map[Position, Int] = {
-
-    @tailrec
-    def scanPositions(positions: Seq[Position], costs: Map[Position, Int]): Map[Position, Int] = {
-
-      positions.headOption match {
-        case Some(pos@Position(x, y)) =>
-          val currentCost = costs(pos)
-          val newCost = currentCost + 1
-          val nextCosts = Seq(Position(x + 1, y), Position(x - 1, y), Position(x, y + 1), Position(x, y - 1))
-            .collect {
-              case pos if tileMap.map.keys.exists(_ == pos) && costs.get(pos).forall(_ > newCost) =>
-                pos -> costs.get(pos).fold(newCost)(oldCost => Math.min(newCost, oldCost))
-            }.toMap
-          scanPositions(positions.tail ++ nextCosts.keys.toSeq, costs ++ nextCosts)
-        case None => costs
-      }
-    }
-
-    scanPositions(Seq(from), Map(from -> 0))
-  }
+    } yield GameState(tiles, units.toMap, cities.toMap, players, currentPlayer)
 
 }
 

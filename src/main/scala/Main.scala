@@ -17,6 +17,11 @@ object Main {
       x <- 0 until width
       y <- 0 until height
     } yield Position(x, y) -> Random.nextInt(Tile.allTiles.size)).toMap
-    GameState(TileMap(width, height, Tile.allTiles, tiles), Map(Position(0, 1) -> Deployment(Character.Infantry, 0), Position(0, 2) -> Deployment(Character.Infantry, 1)), Seq(Player("P0"), Player("P1")), 0)
+    GameState(
+      TileMap(width, height, Tile.allTiles, tiles),
+      Map(Position(0, 1) -> Deployment(Character.Infantry, 0), Position(0, 2) -> Deployment(Character.Infantry, 1)),
+      Map(),
+      Seq(Player("P0"), Player("P1")),
+      0)
   }
 }

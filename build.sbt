@@ -1,22 +1,46 @@
 ThisBuild / version := "0.1.0-SNAPSHOT"
-
-ThisBuild / scalaVersion := "2.13.8"
-
-lazy val root = (project in file("."))
-  .settings(
-    name := "retro_wars",
-    idePackagePrefix := Some("org.jponte")
-  )
+ThisBuild / scalaVersion := "3.1.1"
+ThisBuild / organization := "org.jopnte"
 
 val circeVersion = "0.14.1"
+val monocleVersion = "3.1.0"
 
-libraryDependencies ++= Seq(
-  "io.circe" %% "circe-core",
-  "io.circe" %% "circe-generic",
-  "io.circe" %% "circe-parser"
-).map(_ % circeVersion)
+lazy val core = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("core"))
+  .settings(
+    name := "retro_wars_core",
+    libraryDependencies ++= Seq(
+      "io.circe" %% "circe-core" % circeVersion,
+      "io.circe" %% "circe-generic" % circeVersion,
+      "io.circe" %% "circe-parser" % circeVersion,
+      "dev.optics" %% "monocle-core" % monocleVersion,
+      "dev.optics" %% "monocle-macro" % monocleVersion,
+    )
+  )
 
-libraryDependencies ++= Seq(
-  "dev.optics" %% "monocle-core"  % "3.1.0",
-  "dev.optics" %% "monocle-macro" % "3.1.0",
-)
+lazy val game =
+  (project in file("game"))
+    .enablePlugins(ScalaJSPlugin, SbtIndigo)
+    .settings(
+      name := "retro_wars_game"
+    )
+    .settings(
+      showCursor := true,
+      title := "Retro Wars",
+      gameAssetsDirectory := "assets",
+      windowStartWidth := 528,
+      windowStartHeight := 384,
+      libraryDependencies ++= Seq(
+        "io.indigoengine" %%% "indigo" % "0.12.1",
+        "io.indigoengine" %%% "indigo-extras" % "0.12.1",
+        "io.indigoengine" %%% "indigo-json-circe" % "0.12.1",
+        "dev.optics" %%% "monocle-core" % monocleVersion,
+        "dev.optics" %%% "monocle-macro" % monocleVersion,
+      )
+    ).dependsOn(core.js)
+
+addCommandAlias("buildGame", ";compile;game/fastOptJS;game/indigoBuild")
+addCommandAlias("runGame", ";compile;game/fastOptJS;game/indigoRun")
+addCommandAlias("buildGameFull", ";compile;game/fullOptJS;game/indigoBuildFull")
+addCommandAlias("runGameFull", ";compile;game/fullOptJS;game/indigoRunFull")

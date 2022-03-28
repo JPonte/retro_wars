@@ -1,9 +1,9 @@
 package org.jponte
 
-import io.circe._
-import io.circe.generic.auto._
-import io.circe.syntax._
-import monocle.syntax.all._
+import io.circe.*
+import io.circe.generic.auto.*
+import io.circe.syntax.*
+import monocle.syntax.all.*
 
 case class Deployment(unit: Character, player: Int, health: Int = 100, canMove: Boolean = true, hasAction: Boolean = true)
 

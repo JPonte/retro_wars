@@ -37,7 +37,7 @@ case class GameState(tileMap: TileMap, units: Map[Position, Deployment], cities:
         case (Some(d), _) if d.player != currentPlayer => Left("Unit doesn't belong to the current player")
         case (Some(d), _) if !d.hasAction => Left("Unit already acted this turn")
         case (_, Some(d)) if d.player == currentPlayer => Left("Target unit is allied")
-        case (Some(d), Some(_)) if !Utils.ranges(tileMap, from).filter(c => c._2 > 0 && c._2 <= d.unit.range).contains(target) =>
+        case (Some(d), Some(_)) if !Utils.ranges(tileMap, from).filter(c => c._2 > 0 && c._2 <= d.unit.attackRange).contains(target) =>
           Left("Target not in range")
         case (Some(d1), Some(d2)) =>
           val newState = this

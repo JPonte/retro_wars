@@ -29,7 +29,7 @@ lazy val game =
       showCursor := true,
       title := "Retro Wars",
       gameAssetsDirectory := "assets",
-      windowStartWidth := 528,
+      windowStartWidth := 720,
       windowStartHeight := 384,
       libraryDependencies ++= Seq(
         "io.indigoengine" %%% "indigo" % "0.12.1",

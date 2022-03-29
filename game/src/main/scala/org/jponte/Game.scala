@@ -34,7 +34,7 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
     Outcome(BootResult.noData(GameConfig.default
       .withViewport((15 + 4) * 16 * magnification, (10 * 16) * magnification)
       .withMagnification(magnification))
-      .withAssets(UIAssets.allAssets + AssetType.Image(tileSetAssetName, AssetPath("./assets/tiles_packed.png"))))
+      .withAssets(AssetType.Image(tileSetAssetName, AssetPath("./assets/tiles_packed.png"))))
 
   override def setup(bootData: Unit, assetCollection: AssetCollection, dice: Dice): Outcome[Startup[Unit]] =
     Outcome(Startup.Success(()))

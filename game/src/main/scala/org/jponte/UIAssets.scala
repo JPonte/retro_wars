@@ -9,11 +9,6 @@ object UIAssets {
   private val buttonUpAssetName = AssetName("button_up")
   private val buttonDownAssetName = AssetName("button_down")
 
-  val allAssets: Set[AssetType] = Set(
-    AssetType.Image(buttonUpAssetName, AssetPath("./assets/button_up.png")),
-    AssetType.Image(buttonDownAssetName, AssetPath("./assets/button_down.png"))
-  )
-
   private def buttonAssets(text: String): ButtonAssets = ButtonAssets(
     up = TextBox(text, 200, 16)
       .withFontFamily(FontFamily.fantasy)

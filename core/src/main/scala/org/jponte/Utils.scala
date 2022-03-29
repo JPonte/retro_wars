@@ -58,7 +58,10 @@ object Utils {
       }
     }
 
-    rec(to, List(to))
+    if (costs.contains(to))
+      rec(to, List(to)).reverse
+    else
+      List()
   }
 
   def getRandomState(width: Int, height: Int, seed: Long): GameState = {
@@ -77,7 +80,7 @@ object Utils {
 
   def testMap: GameState = {
     val tiles = testMapStr.split("\n").zipWithIndex.flatMap { case (line, y) =>
-      line.split(",").zipWithIndex.map { case (char, x) =>
+      line.trim.split(",").zipWithIndex.map { case (char, x) =>
         (Position(x, y), char.toInt)
       }
     }.toMap

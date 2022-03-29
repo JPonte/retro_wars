@@ -1,12 +1,13 @@
 package org.jponte
 
 import indigo.*
+import indigo.shared.events.MouseButton
 import indigoextras.subsystems.FPSCounter
 import indigoextras.ui.{Button, ButtonAssets}
 
 import scala.scalajs.js.annotation.JSExportTopLevel
 
-case class UIState(hoverTile: Option[Position], selectedUnit: Option[Position], button: Button)
+case class UIState(hoverTile: Option[Position], selectedUnit: Option[Position], button: Button, checkInfo: Option[Position])
 
 @JSExportTopLevel("IndigoGame")
 object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
@@ -24,7 +25,7 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
 
   override def boot(flags: Map[String, String]): Outcome[BootResult[Unit]] =
     Outcome(BootResult.noData(GameConfig.default
-      .withViewport(720, 384)
+      .withViewport((15 + 4) * 16 * magnification, (10 * 16) * magnification)
       .withMagnification(magnification))
       .withAssets(
         AssetType.Image(tileSetAssetName, AssetPath("./assets/tiles_packed.png")),
@@ -40,6 +41,8 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
 
   case object EndTurnEvent extends GlobalEvent
 
+  case class MoveEvent(from: Position, to: Position) extends GlobalEvent
+
   override def setup(bootData: Unit, assetCollection: AssetCollection, dice: Dice): Outcome[Startup[Unit]] =
     Outcome(Startup.Success(()))
 
@@ -52,14 +55,22 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
           buttonAssets = buttonAssets,
           bounds = Rectangle(0, 0, 32, 16),
           depth = Depth(1)
-        ).withUpActions(EndTurnEvent).moveTo(180, 96)))
+        ).withUpActions(EndTurnEvent).moveTo(15 * 16 + 4, 132),
+        None))
 
   override def initialModel(startupData: Unit): Outcome[GameState] =
-    Outcome(Utils.getRandomState(11, 8, 1))
+    Outcome(Utils.testMap)
 
   override def updateModel(context: FrameContext[Unit], model: GameState): GlobalEvent => Outcome[GameState] = {
     case EndTurnEvent =>
       model.runAction(EndTurn) match {
+        case Left(error) =>
+          println(error)
+          Outcome(model)
+        case Right(newModel) => Outcome(newModel)
+      }
+    case MoveEvent(from, to) =>
+      model.runAction(Move(from, to)) match {
         case Left(error) =>
           println(error)
           Outcome(model)
@@ -72,8 +83,25 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
     case MouseEvent.Move(Point(x, y)) =>
       Outcome(viewModel.copy(hoverTile = Some(Position(x / 16, y / 16))))
     case MouseEvent.Click(Point(x, y)) =>
-      val selectedUnit = Some(Position(x / 16, y / 16)).filter(model.units.contains)
-      Outcome(viewModel.copy(selectedUnit = selectedUnit))
+      val clickedTile = Position(x / 16, y / 16)
+
+      viewModel.selectedUnit.flatMap(p => model.units.get(p).map(p -> _)) match {
+        case Some((position, deployment)) =>
+          val movableTiles = Utils.ranges(position, deployment.unit, model)
+          if (movableTiles.contains(clickedTile)) {
+            Outcome(viewModel.copy(selectedUnit = None)).addGlobalEvents(MoveEvent(position, clickedTile))
+          } else {
+            val selectedUnit = Some(clickedTile).filter(model.units.contains)
+            Outcome(viewModel.copy(selectedUnit = selectedUnit))
+          }
+        case None =>
+          val selectedUnit = Some(clickedTile).filter(model.units.contains)
+          Outcome(viewModel.copy(selectedUnit = selectedUnit))
+      }
+    case MouseEvent.MouseDown(Point(x, y), MouseButton.RightMouseButton) =>
+      Outcome(viewModel.copy(checkInfo = Some(Position(x / 16, y / 16)).filter(model.units.contains)))
+    case MouseEvent.MouseUp(_, MouseButton.RightMouseButton) =>
+      Outcome(viewModel.copy(checkInfo = None))
     case FrameTick =>
       viewModel.button.update(context.inputState.mouse).map { btn =>
         viewModel.copy(button = btn)
@@ -81,6 +109,7 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
     case _ => Outcome(viewModel)
   }
 
+  // TODO: Move some of this logic out of the present loop and into the updateViewModel
   override def present(context: FrameContext[Unit], model: GameState, viewModel: UIState): Outcome[SceneUpdateFragment] = {
     val tiles = model.tileMap.map.map { case (Position(x, y), i) =>
       val tilePos = tileAtlas.getOrElse(i, (0, 6))
@@ -104,7 +133,7 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
         .withColor(RGBA.White)
         .withFontSize(Pixels(12))
         .alignStart
-        .moveTo(180, i * 16)
+        .moveTo(15 * 16 + 4, i * 16)
 
     val tileInfo = viewModel.hoverTile.flatMap(model.tileMap.tileAt)
       .toList
@@ -122,9 +151,9 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
     }
 
     val selectedUnitRange = viewModel.selectedUnit.flatMap(p => model.units.get(p).map(p -> _)).toList.flatMap { case (position, deployment) =>
-      val tiles = Utils.ranges(model.tileMap, position).filter(_._2 < deployment.unit.moveRange)
+      val tiles = Utils.ranges(position, deployment.unit, model)
       val path = viewModel.hoverTile.toList.filter(tiles.contains).flatMap { hoverPos =>
-        Utils.path(model.tileMap, position, hoverPos)
+        Utils.bestPath(position, hoverPos, deployment.unit, model)
       }.map { case Position(x, y) => Point(x * 16 + 8, y * 16 + 8) }
 
       val pathLines = if (path.size > 1) {
@@ -144,6 +173,21 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
       } ++ pathLines
     }
 
-    Outcome(SceneUpdateFragment(tiles ++ hover ++ units ++ tileInfo ++ unitInfo ++ selectedUnitRange ++ List(viewModel.button.draw)))
+    val rangeCheck = viewModel.checkInfo.flatMap(p => model.units.get(p).map(p -> _)).toList.flatMap { case (position, deployment) =>
+      val movableTiles = Utils.ranges(position, deployment.unit, model)
+      val tiles = movableTiles.flatMap { mt =>
+        Utils.inGunRange(mt._1, 1, deployment.unit.attackRange, model.tileMap)
+      }.toSet
+
+      tiles.map { case Position(x, y) =>
+        Shape.Box(
+          Rectangle(Point(x * 16, y * 16), Size(16, 16)),
+          Fill.Color(RGBA.Red.withAlpha(0.6)),
+          Stroke(1, RGBA.Red)
+        ).withDepth(Depth(2))
+      }
+    }
+
+    Outcome(SceneUpdateFragment(tiles ++ hover ++ units ++ tileInfo ++ unitInfo ++ selectedUnitRange ++ rangeCheck ++ List(viewModel.button.draw)))
   }
 }

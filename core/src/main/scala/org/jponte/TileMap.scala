@@ -3,8 +3,11 @@ package org.jponte
 import io.circe.*
 import io.circe.generic.auto.*
 import io.circe.syntax.*
+import Tile._
 
-case class Position(x: Int, y: Int)
+case class Position(x: Int, y: Int) {
+  def adjacentPositions: Seq[Position] = Seq(Position(x + 1, y), Position(x - 1, y), Position(x, y + 1), Position(x, y - 1))
+}
 
 object Position {
   implicit val encodePosition: Encoder[Position] = (pos: Position) => (pos.x, pos.y).asJson

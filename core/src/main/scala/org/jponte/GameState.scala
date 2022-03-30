@@ -22,7 +22,7 @@ case class GameState(
     players: Seq[Player],
     currentPlayer: Int
 ) {
-  def runAction(action: Action): Either[String, GameState] = action match {
+  def runAction(action: GameAction): Either[String, GameState] = action match {
     case Move(from, target) =>
       val deployment = units.get(from)
       val targetDeployment = units.get(target)

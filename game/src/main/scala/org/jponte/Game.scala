@@ -7,11 +7,12 @@ import indigo.shared.events.MouseButton
 import indigoextras.subsystems.FPSCounter
 import indigoextras.ui.{Button, ButtonAssets}
 import org.jponte.GlobalEvents.*
+import io.circe.syntax.*
 
 import scala.scalajs.js.annotation.JSExportTopLevel
 
 @JSExportTopLevel("IndigoGame")
-object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
+object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
 
   override def eventFilters: EventFilters = EventFilters.Permissive
 
@@ -41,17 +42,24 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
       bootData: Unit,
       assetCollection: AssetCollection,
       dice: Dice
-  ): Outcome[Startup[Unit]] =
-    Outcome(Startup.Success(()))
+  ): Outcome[Startup[WebSocketConfig]] =
+    Outcome(
+      Startup.Success(
+        WebSocketConfig(
+          id = WebSocketId("echo"),
+          address = "ws://localhost:8080/ws"
+        )
+      )
+    )
 
-  override def initialViewModel(startupData: Unit, model: GameState): Outcome[UIState] =
+  override def initialViewModel(startupData: WebSocketConfig, model: GameState): Outcome[UIState] =
     Outcome(OverviewState(None, UIAssets.endTurnButton, None))
 
-  override def initialModel(startupData: Unit): Outcome[GameState] =
-    Outcome(Utils.testMap)
+  override def initialModel(startupData: WebSocketConfig): Outcome[GameState] =
+    Outcome(Utils.testMap).addGlobalEvents(WebSocketEvent.Open("hello", startupData))
 
   override def updateModel(
-      context: FrameContext[Unit],
+      context: FrameContext[WebSocketConfig],
       model: GameState
   ): GlobalEvent => Outcome[GameState] = {
     case EndTurnEvent =>
@@ -62,12 +70,14 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
         case Right(newModel) => Outcome(newModel)
       }
     case MoveEvent(from, to) =>
-      model.runAction(Move(from, to)) match {
+      (model.runAction(Move(from, to)) match {
         case Left(error) =>
           println(error)
           Outcome(model)
         case Right(newModel) => Outcome(newModel)
-      }
+      }).addGlobalEvents(
+        WebSocketEvent.Send(EndTurn.asInstanceOf[GameAction].asJson.noSpaces, context.startUpData)
+      )
     case AttackEvent(from, to) =>
       model.runAction(Attack(from, to)) match {
         case Left(error) =>
@@ -75,11 +85,27 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
           Outcome(model)
         case Right(newModel) => Outcome(newModel)
       }
+
+    case WebSocketEvent.Receive(WebSocketId("echo"), message) =>
+      val msg = "Server says you said: " + message
+      IndigoLogger.consoleLog(msg)
+      Outcome(model)
+
+    case WebSocketEvent.Error(WebSocketId(id), message) =>
+      val msg = s"Connection [$id] errored with: " + message
+      IndigoLogger.consoleLog(msg)
+      Outcome(model)
+
+    case WebSocketEvent.Close(WebSocketId(id)) =>
+      val msg = s"Connection [$id] closed."
+      IndigoLogger.consoleLog(msg)
+      Outcome(model)
+
     case _ => Outcome(model)
   }
 
   override def updateViewModel(
-      context: FrameContext[Unit],
+      context: FrameContext[WebSocketConfig],
       model: GameState,
       viewModel: UIState
   ): GlobalEvent => Outcome[UIState] = {
@@ -180,7 +206,7 @@ object Game extends IndigoDemo[Unit, Unit, GameState, UIState] {
   }
 
   override def present(
-      context: FrameContext[Unit],
+      context: FrameContext[WebSocketConfig],
       model: GameState,
       viewModel: UIState
   ): Outcome[SceneUpdateFragment] = {

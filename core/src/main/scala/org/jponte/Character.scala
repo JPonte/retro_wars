@@ -1,6 +1,6 @@
 package org.jponte
 
-sealed case class Character(
+case class Character(
     name: String,
     symbol: Char,
     baseAttack: Int,

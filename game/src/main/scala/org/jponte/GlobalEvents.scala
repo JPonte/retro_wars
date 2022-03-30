@@ -14,4 +14,6 @@ object GlobalEvents {
 
   case object WaitActionEvent extends GlobalEvent
 
+  case object CancelActionEvent extends GlobalEvent
+
 }

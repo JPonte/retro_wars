@@ -11,17 +11,17 @@ object UIAssets {
 
   private def buttonAssets(text: String): ButtonAssets = ButtonAssets(
     up = TextBox(text, 200, 16)
-      .withFontFamily(FontFamily.fantasy)
+      .withFontFamily(FontFamily.sansSerif)
       .withColor(RGBA.Teal)
       .withFontSize(Pixels(12))
       .alignStart,
     over = TextBox(text, 200, 16)
-      .withFontFamily(FontFamily.fantasy)
+      .withFontFamily(FontFamily.sansSerif)
       .withColor(RGBA.SteelBlue)
       .withFontSize(Pixels(12))
       .alignStart,
     down = TextBox(text, 200, 16)
-      .withFontFamily(FontFamily.fantasy)
+      .withFontFamily(FontFamily.sansSerif)
       .withColor(RGBA.DarkBlue)
       .withFontSize(Pixels(12))
       .alignStart

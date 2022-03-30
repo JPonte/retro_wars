@@ -27,7 +27,7 @@ case class GameState(
       val deployment = units.get(from)
       val targetDeployment = units.get(target)
       (deployment, targetDeployment) match {
-        case (None, _)    => Left("No unit in this position")
+        case (None, _) => Left("No unit in this position")
         case (_, Some(_)) => Left("Target position is occupied")
         case (Some(d), _) if d.player != currentPlayer =>
           Left("Unit doesn't belong to the current player")
@@ -55,18 +55,13 @@ case class GameState(
         case (_, Some(d)) if d.player == currentPlayer =>
           Left("Target unit is allied")
         case (Some(d), Some(_))
-            if !Utils
-              .inGunRange(from, 1, d.unit.attackRange, tileMap)
-              .contains(target) =>
+            if !Utils.inGunRange(from, 1, d.unit.attackRange, tileMap).contains(target) =>
           Left("Target not in range")
         case (Some(d1), Some(d2)) =>
           val newState = this
             .focus(_.units)
             .at(target)
-            .replace(
-              Some(d2.copy(health = d2.health - d1.unit.baseAttack))
-                .filter(_.health > 0)
-            )
+            .replace(Some(d2.copy(health = d2.health - d1.unit.baseAttack)).filter(_.health > 0))
             .focus(_.units)
             .at(from)
             .modify(_.map(_.copy(canMove = false, hasAction = false)))
@@ -91,14 +86,7 @@ case class GameState(
             .focus(_.units)
             .at(from)
             .modify(_ =>
-              Some(
-                Deployment(
-                  character,
-                  currentPlayer,
-                  canMove = false,
-                  hasAction = false
-                )
-              )
+              Some(Deployment(character, currentPlayer, canMove = false, hasAction = false))
             )
           Right(newState)
         case _ => Left("Invalid move")
@@ -113,16 +101,11 @@ case class GameState(
         case (_, Some(d), _) if !d.hasAction =>
           Left("Unit already acted this turn")
         case (Some(t), Some(d), o)
-            if Tile.cities.contains(t) && Character.infantryCharacters(
-              d.unit
-            ) && o.forall(_.remaining > 0) =>
+            if Tile.cities.contains(t) && Character
+              .infantryCharacters(d.unit) && o.forall(_.remaining > 0) =>
           val newState = this.focus(_.cities).at(from).modify {
             case Some(value) if value.player == currentPlayer =>
-              Some(
-                value.copy(remaining =
-                  Math.min(value.remaining - (d.health / 10), 0)
-                )
-              )
+              Some(value.copy(remaining = Math.min(value.remaining - (d.health / 10), 0)))
             case _ => Some(CityOwnership(currentPlayer, 20 - (d.health / 10)))
           }
           Right(newState)
@@ -136,10 +119,10 @@ case class GameState(
         (0 until tileMap.width)
           .map { x =>
             val pos = Position(x, y)
-            tileMap.tileAt(pos).map(_.symbol).getOrElse(" ") + units
-              .get(pos)
-              .map(_.unit.symbol.toString)
-              .getOrElse(" ")
+            tileMap
+              .tileAt(pos)
+              .map(_.symbol)
+              .getOrElse(" ") + units.get(pos).map(_.unit.symbol.toString).getOrElse(" ")
           }
           .mkString(" ")
       }

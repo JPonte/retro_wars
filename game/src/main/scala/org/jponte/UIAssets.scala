@@ -33,9 +33,7 @@ object UIAssets {
     depth = Depth(1)
   ).withUpActions(EndTurnEvent).moveTo(15 * 16 + 4, 132)
 
-  def actionButton(action: String, event: GlobalEvent): Button = Button(
-    buttonAssets = buttonAssets(action),
-    bounds = Rectangle(0, 0, 32, 16),
-    depth = Depth(1)
-  ).withUpActions(event)
+  def actionButton(action: String, event: GlobalEvent): Button =
+    Button(buttonAssets = buttonAssets(action), bounds = Rectangle(0, 0, 32, 16), depth = Depth(1))
+      .withUpActions(event)
 }

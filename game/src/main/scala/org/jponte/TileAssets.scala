@@ -16,23 +16,20 @@ object TileAssets {
   val tileSet: AssetType.Image =
     AssetType.Image(tileSetAssetName, AssetPath("./assets/tiles_packed.png"))
 
-  def getTileGraphic(
-      position: Position,
-      tileMap: TileMap
-  ): Graphic[Material.Bitmap] = {
+  def getTileGraphic(position: Position, tileMap: TileMap): Graphic[Material.Bitmap] = {
     tileMap
       .tileAt(position)
       .map { tile =>
         val neighbours = getNeighbourTiles(position, tileMap)
         val tilePos = tile match {
-          case Road                     => roadTile(neighbours)
-          case Grass                    => (2, 4)
-          case Sea                      => (6, 3)
-          case Forest                   => (0, 5)
-          case City                     => (0, 6)
+          case Road => roadTile(neighbours)
+          case Grass => (2, 4)
+          case Sea => (6, 3)
+          case Forest => (0, 5)
+          case City => (0, 6)
           case Factory | Airport | Port => (0, 7)
-          case Headquarters             => (0, 8)
-          case _                        => (10, 0)
+          case Headquarters => (0, 8)
+          case _ => (10, 0)
         }
         Graphic(
           Rectangle(tilePos._1 * 16, tilePos._2 * 16, 16, 16),
@@ -40,9 +37,7 @@ object TileAssets {
           Material.Bitmap(tileSetAssetName)
         )
       }
-      .getOrElse(
-        Graphic(Rectangle(0, 0, 16, 16), 3, Material.Bitmap(tileSetAssetName))
-      )
+      .getOrElse(Graphic(Rectangle(0, 0, 16, 16), 3, Material.Bitmap(tileSetAssetName)))
   }
 
   private def roadTile(neighbourTiles: NeighbourTiles): (Int, Int) =

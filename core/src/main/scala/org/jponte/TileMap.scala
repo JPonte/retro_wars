@@ -6,29 +6,20 @@ import io.circe.syntax.*
 import Tile._
 
 case class Position(x: Int, y: Int) {
-  def adjacentPositions: Seq[Position] = Seq(
-    Position(x + 1, y),
-    Position(x - 1, y),
-    Position(x, y + 1),
-    Position(x, y - 1)
-  )
+  def adjacentPositions: Seq[Position] =
+    Seq(Position(x + 1, y), Position(x - 1, y), Position(x, y + 1), Position(x, y - 1))
 }
 
 object Position {
-  implicit val encodePosition: Encoder[Position] = (pos: Position) =>
-    (pos.x, pos.y).asJson
+  implicit val encodePosition: Encoder[Position] = (pos: Position) => (pos.x, pos.y).asJson
   implicit val decodePosition: Decoder[Position] = (c: HCursor) =>
-    c.as[(Int, Int)].map { case (x, y) =>
-      Position(x, y)
+    c.as[(Int, Int)].map {
+      case (x, y) =>
+        Position(x, y)
     }
 }
 
-case class TileMap(
-    width: Int,
-    height: Int,
-    tileSet: Seq[Tile],
-    map: Map[Position, Int]
-) {
+case class TileMap(width: Int, height: Int, tileSet: Seq[Tile], map: Map[Position, Int]) {
   def tileAt(position: Position): Option[Tile] =
     map.get(position).map(tileSet)
 }

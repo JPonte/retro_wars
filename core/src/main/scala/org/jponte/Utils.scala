@@ -4,39 +4,28 @@ import scala.annotation.tailrec
 import scala.util.Random
 
 object Utils {
-  def ranges(
-      from: Position,
-      character: Character,
-      gameState: GameState
-  ): Map[Position, Int] = {
+  def ranges(from: Position, character: Character, gameState: GameState): Map[Position, Int] = {
 
     @tailrec
-    def scanPositions(
-        positions: Seq[Position],
-        costs: Map[Position, Int]
-    ): Map[Position, Int] = {
+    def scanPositions(positions: Seq[Position], costs: Map[Position, Int]): Map[Position, Int] = {
       positions.headOption match {
         case Some(pos) =>
           val currentCost = costs(pos)
           val adjacentTiles = pos.adjacentPositions
           val nextCosts = adjacentTiles
-            .flatMap { pos =>
-              gameState.tileMap.tileAt(pos).map(pos -> _)
-            }
-            .flatMap { case (pos, tile) =>
-              for {
-                tileCost <- tile.moveCost.get(character.movementType)
-                newCost = tileCost + currentCost
-                if pos == from || !gameState.units.contains(pos)
-                if newCost <= character.moveRange
-                if !costs.get(pos).exists(_ <= newCost)
-              } yield pos -> newCost
+            .flatMap { pos => gameState.tileMap.tileAt(pos).map(pos -> _) }
+            .flatMap {
+              case (pos, tile) =>
+                for {
+                  tileCost <- tile.moveCost.get(character.movementType)
+                  newCost = tileCost + currentCost
+                  if pos == from || !gameState.units.contains(pos)
+                  if newCost <= character.moveRange
+                  if !costs.get(pos).exists(_ <= newCost)
+                } yield pos -> newCost
             }
             .toMap
-          scanPositions(
-            positions.tail ++ nextCosts.keys.toSeq,
-            costs ++ nextCosts
-          )
+          scanPositions(positions.tail ++ nextCosts.keys.toSeq, costs ++ nextCosts)
         case None => costs
       }
     }
@@ -44,19 +33,18 @@ object Utils {
     scanPositions(Seq(from), Map(from -> 0))
   }
 
-  def inGunRange(
-      from: Position,
-      minRange: Int,
-      maxRange: Int,
-      tileMap: TileMap
-  ): Set[Position] = {
+  def inGunRange(from: Position, minRange: Int, maxRange: Int, tileMap: TileMap): Set[Position] = {
     def dist(p1: Position, p2: Position): Int =
       (p2.x - p1.x).abs + (p2.y - p1.y).abs
 
-    tileMap.map.keys.filter { to =>
-      val d = dist(from, to)
-      d >= minRange && d <= maxRange
-    }.toSet
+    tileMap
+      .map
+      .keys
+      .filter { to =>
+        val d = dist(from, to)
+        d >= minRange && d <= maxRange
+      }
+      .toSet
   }
 
   def bestPath(
@@ -72,7 +60,8 @@ object Utils {
       if (acc.contains(from)) {
         acc
       } else {
-        val adjacent = currentPos.adjacentPositions
+        val adjacent = currentPos
+          .adjacentPositions
           .filter(!acc.contains(_))
           .flatMap(p => costs.get(p).map(p -> _))
           .toMap
@@ -113,10 +102,12 @@ object Utils {
     val tiles = testMapStr
       .split("\n")
       .zipWithIndex
-      .flatMap { case (line, y) =>
-        line.trim.split(",").zipWithIndex.map { case (char, x) =>
-          (Position(x, y), char.toInt)
-        }
+      .flatMap {
+        case (line, y) =>
+          line.trim.split(",").zipWithIndex.map {
+            case (char, x) =>
+              (Position(x, y), char.toInt)
+          }
       }
       .toMap
     GameState(

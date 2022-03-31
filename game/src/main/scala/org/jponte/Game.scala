@@ -8,6 +8,7 @@ import indigoextras.subsystems.FPSCounter
 import indigoextras.ui.{Button, ButtonAssets}
 import org.jponte.GlobalEvents.*
 import io.circe.syntax.*
+import io.circe.parser.decode
 
 import scala.scalajs.js.annotation.JSExportTopLevel
 
@@ -17,6 +18,8 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
   override def eventFilters: EventFilters = EventFilters.Permissive
 
   private val magnification = 3
+
+  private val webSocketId = WebSocketId("game_sock")
 
   implicit val outcomeApplicative: Applicative[Outcome] =
     new Applicative[Outcome] {
@@ -39,14 +42,14 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
     )
 
   override def setup(
-                      bootData: Unit,
-                      assetCollection: AssetCollection,
-                      dice: Dice
-                    ): Outcome[Startup[WebSocketConfig]] =
+      bootData: Unit,
+      assetCollection: AssetCollection,
+      dice: Dice
+  ): Outcome[Startup[WebSocketConfig]] =
     Outcome(
       Startup.Success(
         WebSocketConfig(
-          id = WebSocketId("echo"),
+          id = webSocketId,
           address = "ws://localhost:8080/ws"
         )
       )
@@ -58,45 +61,57 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
   override def initialModel(startupData: WebSocketConfig): Outcome[GameState] =
     Outcome(Utils.testMap).addGlobalEvents(WebSocketEvent.Open("hello", startupData))
 
+  private def runAction(action: GameAction, model: GameState): Outcome[GameState] = {
+    model.runAction(action) match {
+      case Left(error) =>
+        IndigoLogger.error(error)
+        Outcome(model)
+      case Right(newModel) => Outcome(newModel)
+    }
+  }
+
+  private def runActionAndSend(
+      action: GameAction,
+      context: FrameContext[WebSocketConfig],
+      model: GameState
+  ): Outcome[GameState] = {
+    model.runAction(action) match {
+      case Left(error) =>
+        IndigoLogger.error(error)
+        Outcome(model)
+      case Right(newModel) =>
+        Outcome(newModel).addGlobalEvents(
+          WebSocketEvent.Send(
+            GameActionWebSocketMessage(action).asInstanceOf[WebSocketMessage].asJson.noSpaces,
+            context.startUpData
+          )
+        )
+    }
+  }
+
   override def updateModel(
-                            context: FrameContext[WebSocketConfig],
-                            model: GameState
-                          ): GlobalEvent => Outcome[GameState] = {
+      context: FrameContext[WebSocketConfig],
+      model: GameState
+  ): GlobalEvent => Outcome[GameState] = {
     case EndTurnEvent =>
-      (model.runAction(EndTurn) match {
-        case Left(error) =>
-          println(error)
-          Outcome(model)
-        case Right(newModel) => Outcome(newModel)
-      }).addGlobalEvents(
-        WebSocketEvent.Send(GameActionWebSocketMessage(EndTurn).asInstanceOf[WebSocketMessage].asJson.noSpaces, context.startUpData)
-      )
+      runActionAndSend(EndTurn, context, model)
     case MoveEvent(from, to) =>
-      val action = Move(from, to)
-      (model.runAction(action) match {
-        case Left(error) =>
-          println(error)
-          Outcome(model)
-        case Right(newModel) => Outcome(newModel)
-      }).addGlobalEvents(
-        WebSocketEvent.Send(GameActionWebSocketMessage(action).asInstanceOf[WebSocketMessage].asJson.noSpaces, context.startUpData)
-      )
+      runActionAndSend(Move(from, to), context, model)
     case AttackEvent(from, to) =>
-      val action = Attack(from, to)
-      (model.runAction(Attack(from, to)) match {
-        case Left(error) =>
-          println(error)
+      runActionAndSend(Attack(from, to), context, model)
+    case PurchaseUnitEvent(position, character) =>
+      runActionAndSend(PurchaseUnit(position, character), context, model)
+    case WebSocketEvent.Receive(webSocketId, message) =>
+      decode[WebSocketMessage](message) match {
+        case Left(value) =>
+          IndigoLogger.error(s"Couldn't decode $message - Error: $value")
           Outcome(model)
-        case Right(newModel) => Outcome(newModel)
-      }).addGlobalEvents(
-        WebSocketEvent.Send(GameActionWebSocketMessage(action).asInstanceOf[WebSocketMessage].asJson.noSpaces, context.startUpData)
-      )
-
-    case WebSocketEvent.Receive(WebSocketId("echo"), message) =>
-      val msg = "Server says you said: " + message
-      IndigoLogger.consoleLog(msg)
-      Outcome(model)
-
+        case Right(GameActionWebSocketMessage(gameAction)) => runAction(gameAction, model)
+        case Right(GameStateWebSocketMessage(gameState)) => Outcome(gameState)
+        case other =>
+          IndigoLogger.error(s"Got something weird: $other")
+          Outcome(model)
+      }
     case WebSocketEvent.Error(WebSocketId(id), message) =>
       val msg = s"Connection [$id] errored with: " + message
       IndigoLogger.consoleLog(msg)
@@ -111,16 +126,16 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
   }
 
   override def updateViewModel(
-                                context: FrameContext[WebSocketConfig],
-                                model: GameState,
-                                viewModel: UIState
-                              ): GlobalEvent => Outcome[UIState] = {
+      context: FrameContext[WebSocketConfig],
+      model: GameState,
+      viewModel: UIState
+  ): GlobalEvent => Outcome[UIState] = {
     case MouseEvent.Move(Point(x, y)) =>
       val tile =
         Option(Position(x / 16, y / 16)).filter(model.tileMap.map.contains)
       val newVm = viewModel match {
         case s: OverviewState => s.copy(hoverTile = tile)
-        case s@UnitMoveState(_, selectedPosition, _, _) =>
+        case s @ UnitMoveState(_, selectedPosition, _, _) =>
           val path = tile.toList.flatMap { hoverPos =>
             Utils.bestPath(selectedPosition, hoverPos, model.units(selectedPosition).unit, model)
           }
@@ -133,11 +148,22 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
       val tile = Position(x / 16, y / 16)
       viewModel match {
         case OverviewState(hoverTile, endTurnButton, checkRange)
-          if model.units.get(tile).exists(d => d.canMove && d.player == model.currentPlayer) =>
+            if model.units.get(tile).exists(d => d.canMove && d.player == model.currentPlayer) =>
           val movableTiles = Utils.ranges(tile, model.units(tile).unit, model)
           Outcome(UnitMoveState(hoverTile, tile, movableTiles.keys.toSet, List(tile)))
+        case OverviewState(hoverTile, endTurnButton, checkRange)
+            if !model.units.contains(tile) && model.tileMap.tileAt(tile).contains(Tile.Factory) =>
+          val actions: Seq[(String, GlobalEvent)] = Character.allCharacters.map { c =>
+            c.name -> PurchaseUnitEvent(tile, c)
+          } :+ ("Cancel" -> CancelActionEvent)
+
+          val buttons = actions.zipWithIndex.map {
+            case ((actionStr, actionEvent), i) =>
+              UIAssets.actionButton(actionStr, actionEvent).moveTo(15 * 16 + 4, i * 16)
+          }
+          Outcome(PurchaseUnitActionState(tile, buttons))
         case UnitMoveState(hoverTile, selectedPosition, movableTiles, movingPath)
-          if movableTiles.contains(tile) =>
+            if movableTiles.contains(tile) =>
           val deployment = model.units(selectedPosition)
           val gunRange =
             Utils.inGunRange(movingPath.last, 1, deployment.unit.attackRange, model.tileMap)
@@ -159,7 +185,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
           Outcome(UnitActionState(selectedPosition, movingPath, actionButtons, targets))
         case s: UnitActionState => Outcome(s)
         case UnitAttackState(selectedPosition, hoverTile, movingPath, targets)
-          if targets.contains(tile) =>
+            if targets.contains(tile) =>
           Outcome(OverviewState(None, UIAssets.endTurnButton, None)).addGlobalEvents(
             List(MoveEvent(selectedPosition, movingPath.last), AttackEvent(movingPath.last, tile))
           )
@@ -194,6 +220,8 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
         case s: OverviewState => Outcome(s)
         case _ => Outcome(OverviewState(None, UIAssets.endTurnButton, None))
       }
+    case PurchaseUnitEvent(_, _) =>
+      Outcome(OverviewState(None, UIAssets.endTurnButton, None))
     case FrameTick =>
       viewModel match {
         case s: OverviewState =>
@@ -205,22 +233,28 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
             .map(b => b.update(context.inputState.mouse))
             .sequence
             .map(btns => s.copy(actionButtons = btns))
+        case s: PurchaseUnitActionState =>
+          s.actionButtons
+            .map(b => b.update(context.inputState.mouse))
+            .sequence
+            .map(btns => s.copy(actionButtons = btns))
         case _ => Outcome(viewModel)
       }
-
     case _ => Outcome(viewModel)
   }
 
   override def present(
-                        context: FrameContext[WebSocketConfig],
-                        model: GameState,
-                        viewModel: UIState
-                      ): Outcome[SceneUpdateFragment] = {
+      context: FrameContext[WebSocketConfig],
+      model: GameState,
+      viewModel: UIState
+  ): Outcome[SceneUpdateFragment] = {
     val tiles = model
       .tileMap
       .map
+      .toSeq
+      .sortBy(_._1.y)
       .map {
-        case (pos@Position(x, y), i) =>
+        case (pos @ Position(x, y), i) =>
           TileAssets.getTileGraphic(pos, model.tileMap).moveTo(Point(x * 16, y * 16))
       }
       .toList
@@ -250,7 +284,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
       )
 
     def hoverCursor(hoverTile: Option[Position]) = hoverTile.flatMap {
-      case p@Position(x, y) =>
+      case p @ Position(x, y) =>
         if (model.tileMap.map.contains(p))
           Some(
             Graphic(
@@ -379,6 +413,9 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
           tiles ++ pathLines(movingPath) ++ units ++ hoverCursor(hoverTile) ++ tileInfo(
             hoverTile
           ) ++ unitInfo(hoverTile) ++ targetsSquares(targets) ++ drawToMoveUnit(movingPath.last)
+        Outcome(SceneUpdateFragment(allElements))
+      case PurchaseUnitActionState(selectedPosition, actionButtons) =>
+        val allElements = tiles ++ units ++ actionButtons.map(_.draw)
         Outcome(SceneUpdateFragment(allElements))
     }
   }

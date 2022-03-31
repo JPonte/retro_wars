@@ -7,6 +7,7 @@ sealed trait WebSocketMessage
 
 case class GameActionWebSocketMessage(gameAction: GameAction) extends WebSocketMessage
 
+case class GameStateWebSocketMessage(gameState: GameState) extends WebSocketMessage
 
 object WebSocketMessage {
   implicit val webSocketMessageDecoder: Decoder[WebSocketMessage] = deriveDecoder[WebSocketMessage]

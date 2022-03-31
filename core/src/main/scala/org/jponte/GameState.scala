@@ -13,12 +13,14 @@ case class Deployment(
     hasAction: Boolean = true
 )
 
-case class CityOwnership(player: Int, remaining: Int = 20)
+sealed trait CityStatus
+case class Captured(player: Int) extends CityStatus
+case class Capturing(player: Int, health: Int = 20) extends CityStatus
 
 case class GameState(
     tileMap: TileMap,
     units: Map[Position, Deployment],
-    cities: Map[Position, CityOwnership],
+    cities: Map[Position, CityStatus],
     players: Seq[Player],
     currentPlayer: Int
 ) {
@@ -92,22 +94,29 @@ case class GameState(
         case _ => Left("Invalid move")
       }
     case CaptureCity(from) =>
-      val tile = tileMap.tileAt(from)
-      val deployment = units.get(from)
-      val cityOwnership = cities.get(from)
-      (tile, deployment, cityOwnership) match {
+      val tile = tileMap.tileAt(from).filter(Tile.cities.contains)
+      val deployment = units.get(from).filter(d => Character.infantryCharacters.contains(d.unit))
+      val cityStatus = cities.get(from)
+      (tile, deployment, cityStatus) match {
         case (_, Some(d), _) if d.player != currentPlayer =>
           Left("Unit doesn't belong to the current player")
         case (_, Some(d), _) if !d.hasAction =>
           Left("Unit already acted this turn")
-        case (Some(t), Some(d), o)
-            if Tile.cities.contains(t) && Character
-              .infantryCharacters(d.unit) && o.forall(_.remaining > 0) =>
-          val newState = this.focus(_.cities).at(from).modify {
-            case Some(value) if value.player == currentPlayer =>
-              Some(value.copy(remaining = Math.min(value.remaining - (d.health / 10), 0)))
-            case _ => Some(CityOwnership(currentPlayer, 20 - (d.health / 10)))
+        case (None, _, _) =>
+          Left("Tile isn't capturable")
+        case (Some(t), Some(d), Some(Captured(player))) if d.player == player =>
+          Left("City already captured")
+        case (Some(t), Some(d), Some(Capturing(player, health))) if d.player == player =>
+          val newCityStatus = Capturing(player, health - d.health)
+          val newState = if (newCityStatus.health <= 0) {
+            this.focus(_.cities).at(from).replace(Some(Captured(player)))
+          } else {
+            this.focus(_.cities).at(from).replace(Some(newCityStatus))
           }
+          Right(newState)
+        case (Some(t), Some(d), None) =>
+          val newCityStatus = Capturing(d.player, health = 20 - (d.health / 10))
+          val newState = this.focus(_.cities).at(from).replace(Some(newCityStatus))
           Right(newState)
         case _ => Left("Invalid move")
       }
@@ -143,7 +152,7 @@ object GameState {
     for {
       tiles <- c.downField("tileMap").as[TileMap]
       units <- c.downField("units").as[Seq[(Position, Deployment)]]
-      cities <- c.downField("cities").as[Seq[(Position, CityOwnership)]]
+      cities <- c.downField("cities").as[Seq[(Position, CityStatus)]]
       players <- c.downField("players").as[Seq[Player]]
       currentPlayer <- c.downField("currentPlayer").as[Int]
     } yield GameState(tiles, units.toMap, cities.toMap, players, currentPlayer)

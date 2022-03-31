@@ -30,3 +30,8 @@ case class UnitAttackState(
     movingPath: Seq[Position],
     targets: Set[Position]
 ) extends UIState
+
+case class PurchaseUnitActionState(
+    selectedPosition: Position,
+    actionButtons: Seq[Button]
+) extends UIState

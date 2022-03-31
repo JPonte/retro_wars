@@ -16,4 +16,6 @@ object GlobalEvents {
 
   case object CancelActionEvent extends GlobalEvent
 
+  case class PurchaseUnitEvent(position: Position, character: Character) extends GlobalEvent
+
 }

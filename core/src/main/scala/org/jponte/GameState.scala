@@ -13,9 +13,8 @@ case class Deployment(
     hasAction: Boolean = true
 )
 
-sealed trait CityStatus
-case class Captured(player: Int) extends CityStatus
-case class Capturing(player: Int, health: Int = 20) extends CityStatus
+case class Siege(player: Int, remaining: Int = 20)
+case class CityStatus(owner: Option[Int], underSiege: Option[Siege])
 
 case class GameState(
     tileMap: TileMap,
@@ -29,10 +28,12 @@ case class GameState(
       val deployment = units.get(from)
       val targetDeployment = units.get(target)
       (deployment, targetDeployment) match {
+
         case (None, _) => Left("No unit in this position")
-        case (_, Some(_)) => Left("Target position is occupied")
         case (Some(d), _) if d.player != currentPlayer =>
           Left("Unit doesn't belong to the current player")
+        case (Some(_), Some(_)) if from == target => Right(this)
+        case (_, Some(_)) => Left("Target position is occupied")
         case (Some(d), _) if !d.canMove => Left("Unit already moved this turn")
         case (Some(d), None) =>
           val newState = this
@@ -80,10 +81,10 @@ case class GameState(
     case PurchaseUnit(from, character) =>
       val tile = tileMap.tileAt(from)
       val deployment = units.get(from)
-      (tile, deployment) match {
-        case (_, Some(d)) if d.player != currentPlayer =>
-          Left("Unit doesn't belong to the current player")
-        case (Some(tile), None) if tile == Tile.Factory =>
+      val cityStatus = cities.get(from)
+      (tile, deployment, cityStatus) match {
+        case (Some(tile), None, Some(CityStatus(Some(owner), _)))
+            if tile == Tile.Factory && owner == currentPlayer =>
           val newState = this
             .focus(_.units)
             .at(from)
@@ -97,6 +98,7 @@ case class GameState(
       val tile = tileMap.tileAt(from).filter(Tile.cities.contains)
       val deployment = units.get(from).filter(d => Character.infantryCharacters.contains(d.unit))
       val cityStatus = cities.get(from)
+      println((tile, deployment, cityStatus))
       (tile, deployment, cityStatus) match {
         case (_, Some(d), _) if d.player != currentPlayer =>
           Left("Unit doesn't belong to the current player")
@@ -104,19 +106,24 @@ case class GameState(
           Left("Unit already acted this turn")
         case (None, _, _) =>
           Left("Tile isn't capturable")
-        case (Some(t), Some(d), Some(Captured(player))) if d.player == player =>
+        case (Some(t), Some(d), Some(CityStatus(Some(owner), _))) if d.player == owner =>
           Left("City already captured")
-        case (Some(t), Some(d), Some(Capturing(player, health))) if d.player == player =>
-          val newCityStatus = Capturing(player, health - d.health)
-          val newState = if (newCityStatus.health <= 0) {
-            this.focus(_.cities).at(from).replace(Some(Captured(player)))
+        case (Some(t), Some(d), Some(CityStatus(currentOwner, Some(Siege(player, remaining)))))
+            if d.player == player =>
+          val newSiege = Siege(player, remaining - d.health)
+          val newState = if (newSiege.remaining <= 0) {
+            this.focus(_.cities).at(from).replace(Some(CityStatus(Some(player), None)))
           } else {
-            this.focus(_.cities).at(from).replace(Some(newCityStatus))
+            this.focus(_.cities).at(from).replace(Some(CityStatus(currentOwner, Some(newSiege))))
           }
           Right(newState)
-        case (Some(t), Some(d), None) =>
-          val newCityStatus = Capturing(d.player, health = 20 - (d.health / 10))
-          val newState = this.focus(_.cities).at(from).replace(Some(newCityStatus))
+        case (Some(t), Some(d), cs) if cs.forall(!_.owner.contains(d.player)) =>
+          val newSiege = Siege(d.player, 20 - d.health)
+          val newState =
+            this
+              .focus(_.cities)
+              .at(from)
+              .replace(Some(CityStatus(cs.flatMap(_.owner), Some(newSiege))))
           Right(newState)
         case _ => Left("Invalid move")
       }

@@ -113,10 +113,20 @@ object Utils {
     GameState(
       TileMap(15, 10, Tile.allTiles, tiles),
       Map(
-        Position(4, 4) -> Deployment(Character.Tank, 0),
-        Position(1, 2) -> Deployment(Character.Infantry, 1)
+        Position(13, 3) -> Deployment(Character.Infantry, 1)
       ),
-      Map(),
+      Map(
+        Position(2, 6) -> CityStatus(Some(0), None),
+        Position(1, 5) -> CityStatus(Some(0), None),
+        Position(1, 6) -> CityStatus(Some(0), None),
+        Position(2, 7) -> CityStatus(Some(0), None),
+        Position(3, 7) -> CityStatus(Some(0), None),
+        Position(12, 2) -> CityStatus(Some(1), None),
+        Position(11, 1) -> CityStatus(Some(1), None),
+        Position(13, 1) -> CityStatus(Some(1), None),
+        Position(13, 2) -> CityStatus(Some(1), None),
+        Position(13, 3) -> CityStatus(Some(1), None)
+      ),
       Seq(Player("Player 1"), Player("Player 2")),
       0
     )

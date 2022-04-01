@@ -18,7 +18,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
   override def eventFilters: EventFilters = EventFilters.Permissive
 
   private val magnification = 3
-
+  private val colorSequence = Seq(RGB.Blue, RGB.Red, RGB.Yellow, RGB.Green)
   private val webSocketId = WebSocketId("game_sock")
 
   implicit val outcomeApplicative: Applicative[Outcome] =
@@ -39,6 +39,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
             .withMagnification(magnification)
         )
         .withAssets(TileAssets.tileSet)
+        .withAnimations(TileAssets.seaAnimation)
     )
 
   override def setup(
@@ -101,6 +102,8 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
       runActionAndSend(Attack(from, to), context, model)
     case PurchaseUnitEvent(position, character) =>
       runActionAndSend(PurchaseUnit(position, character), context, model)
+    case CaptureCityEvent(position) =>
+      runActionAndSend(CaptureCity(position), context, model)
     case WebSocketEvent.Receive(webSocketId, message) =>
       decode[WebSocketMessage](message) match {
         case Left(value) =>
@@ -152,7 +155,12 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
           val movableTiles = Utils.ranges(tile, model.units(tile).unit, model)
           Outcome(UnitMoveState(hoverTile, tile, movableTiles.keys.toSet, List(tile)))
         case OverviewState(hoverTile, endTurnButton, checkRange)
-            if !model.units.contains(tile) && model.tileMap.tileAt(tile).contains(Tile.Factory) =>
+            if !model
+              .units
+              .contains(tile) && model.tileMap.tileAt(tile).contains(Tile.Factory) && model
+              .cities
+              .get(tile)
+              .exists(_.owner.contains(model.currentPlayer)) =>
           val actions: Seq[(String, GlobalEvent)] = Character.allCharacters.map { c =>
             c.name -> PurchaseUnitEvent(tile, c)
           } :+ ("Cancel" -> CancelActionEvent)
@@ -169,15 +177,15 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
             Utils.inGunRange(movingPath.last, 1, deployment.unit.attackRange, model.tileMap)
           val targets =
             gunRange.filter(p => model.units.get(p).exists(_.player != deployment.player))
-          val actions = if (targets.nonEmpty) {
-            Seq(
-              "Attack" -> AttackActionEvent,
-              "Wait" -> WaitActionEvent,
-              "Cancel" -> CancelActionEvent
-            )
-          } else {
-            Seq("Wait" -> WaitActionEvent, "Cancel" -> CancelActionEvent)
-          }
+          val isCity = model.tileMap.tileAt(tile).exists(t => Tile.cities.contains(t))
+          val cityStatus = model.cities.get(tile).forall(!_.owner.contains(model.currentPlayer))
+          val captureAction =
+            if (isCity && cityStatus) Seq("Capture" -> CaptureCityActionEvent) else Seq()
+          val attackAction = if (targets.nonEmpty) Seq("Attack" -> AttackActionEvent) else Seq()
+          val actions = attackAction ++ captureAction ++ Seq(
+            "Wait" -> WaitActionEvent,
+            "Cancel" -> CancelActionEvent
+          )
           val actionButtons = actions.zipWithIndex.map {
             case ((actionStr, actionEvent), i) =>
               UIAssets.actionButton(actionStr, actionEvent).moveTo(15 * 16 + 4, i * 16)
@@ -187,7 +195,8 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
         case UnitAttackState(selectedPosition, hoverTile, movingPath, targets)
             if targets.contains(tile) =>
           Outcome(OverviewState(None, UIAssets.endTurnButton, None)).addGlobalEvents(
-            List(MoveEvent(selectedPosition, movingPath.last), AttackEvent(movingPath.last, tile))
+            MoveEvent(selectedPosition, movingPath.last),
+            AttackEvent(movingPath.last, tile)
           )
         case _ => Outcome(viewModel)
       }
@@ -206,6 +215,15 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
       viewModel match {
         case UnitActionState(selectedPosition, movingPath, actionButtons, targets) =>
           Outcome(UnitAttackState(selectedPosition, None, movingPath, targets))
+        case _ => Outcome(OverviewState(None, UIAssets.endTurnButton, None))
+      }
+    case GlobalEvents.CaptureCityActionEvent =>
+      viewModel match {
+        case UnitActionState(selectedPosition, movingPath, actionButtons, targets) =>
+          Outcome(OverviewState(None, UIAssets.endTurnButton, None)).addGlobalEvents(
+            MoveEvent(selectedPosition, movingPath.last),
+            CaptureCityEvent(movingPath.last)
+          )
         case _ => Outcome(OverviewState(None, UIAssets.endTurnButton, None))
       }
     case GlobalEvents.WaitActionEvent =>
@@ -248,47 +266,10 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
       model: GameState,
       viewModel: UIState
   ): Outcome[SceneUpdateFragment] = {
-    val tilesBackground = Shape
-      .Box(
-        Rectangle(Point(0, 0), Size(15 * 16, 10 * 16)),
-        Fill.Color(RGBA(0.753, 0.878, 0.188, 1.0))
-      )
-      .withDepth(Depth(4))
-
-    val tiles = List(tilesBackground) ++ model
-      .tileMap
-      .map
-      .toSeq
-      .sortBy(_._1.y)
-      .map {
-        case (pos @ Position(x, y), i) =>
-          TileAssets.getTileGraphic(pos, model.tileMap).moveTo(Point(x * 16, y * 16))
-      }
-      .toList
-
-    val units = model
-      .units
-      .map {
-        case (Position(x, y), Deployment(_, player, health, canMove, _)) =>
-          val teamColor = UnitAssets.colorSequence(player)
-          val tint = if (canMove) RGB.White else RGB.Black
-
-          Graphic(
-            Rectangle(2 * 16, 16 * 16, 16, 16),
-            3,
-            Material.ImageEffects(TileAssets.tileSetAssetName).withTint(tint.mix(teamColor))
-          ).moveTo(Point(x * 16, y * 16))
-      }
-      .toList
-
-    def drawToMoveUnit(position: Position) =
-      List(
-        Graphic(
-          Rectangle(2 * 16, 16 * 16, 16, 16),
-          3,
-          Material.ImageEffects(TileAssets.tileSetAssetName).withAlpha(0.75)
-        ).moveTo(Point(position.x * 16, position.y * 16))
-      )
+    val units = model.units.toList.flatMap {
+      case (position, deployment) =>
+        TileAssets.drawDeployment(position, deployment)
+    }
 
     def hoverCursor(hoverTile: Option[Position]) = hoverTile.flatMap {
       case p @ Position(x, y) =>
@@ -296,7 +277,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
           Some(
             Graphic(
               Rectangle(6 * 16, 42 * 16, 16, 16),
-              2,
+              0,
               Material.Bitmap(TileAssets.tileSetAssetName)
             ).moveTo(Point(x * 16, y * 16))
           )
@@ -317,7 +298,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
       List(
         TextBox(playerName, 200, 16)
           .withFontFamily(FontFamily.monospace)
-          .withColor(UnitAssets.colorSequence(model.currentPlayer).toRGBA)
+          .withColor(colorSequence(model.currentPlayer).toRGBA)
           .withFontSize(Pixels(12))
           .alignStart
           .moveTo(15 * 16 + 4, 0)
@@ -397,13 +378,15 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
 
     viewModel match {
       case OverviewState(hoverTile, endTurnButton, checkRange) =>
-        val allElements = tiles ++ units ++ hoverCursor(hoverTile) ++ currentPlayerText ++ tileInfo(
+        val allElements = TileAssets.drawMap(model) ++ units ++ hoverCursor(
+          hoverTile
+        ) ++ currentPlayerText ++ tileInfo(
           hoverTile
         ) ++ unitInfo(hoverTile) ++ rangeCheck(checkRange) ++ List(endTurnButton.draw)
         Outcome(SceneUpdateFragment(allElements))
       case UnitMoveState(hoverTile, selectedPosition, movableTiles, movingPath) =>
         val allElements =
-          tiles ++ pathLines(movingPath) ++ units ++ hoverCursor(
+          TileAssets.drawMap(model) ++ pathLines(movingPath) ++ units ++ hoverCursor(
             hoverTile
           ) ++ currentPlayerText ++ tileInfo(hoverTile) ++ unitInfo(hoverTile) ++ selectedUnitRange(
             movableTiles
@@ -411,18 +394,21 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
         Outcome(SceneUpdateFragment(allElements))
       case UnitActionState(selectedUnit, movingPath, actionButtons, targets) =>
         val allElements =
-          tiles ++ pathLines(movingPath) ++ units ++ actionButtons.map(_.draw) ++ drawToMoveUnit(
-            movingPath.last
-          )
+          TileAssets.drawMap(model) ++ pathLines(movingPath) ++ units ++ actionButtons.map(
+            _.draw
+          ) ++ TileAssets.drawDeployment(movingPath.last, model.units(selectedUnit), true)
         Outcome(SceneUpdateFragment(allElements))
       case UnitAttackState(selectedUnit, hoverTile, movingPath, targets) =>
         val allElements =
-          tiles ++ pathLines(movingPath) ++ units ++ hoverCursor(hoverTile) ++ tileInfo(
+          TileAssets.drawMap(model) ++ pathLines(movingPath) ++ units ++ hoverCursor(
             hoverTile
-          ) ++ unitInfo(hoverTile) ++ targetsSquares(targets) ++ drawToMoveUnit(movingPath.last)
+          ) ++ tileInfo(
+            hoverTile
+          ) ++ unitInfo(hoverTile) ++ targetsSquares(targets) ++
+            TileAssets.drawDeployment(movingPath.last, model.units(selectedUnit), true)
         Outcome(SceneUpdateFragment(allElements))
       case PurchaseUnitActionState(selectedPosition, actionButtons) =>
-        val allElements = tiles ++ units ++ actionButtons.map(_.draw)
+        val allElements = TileAssets.drawMap(model) ++ units ++ actionButtons.map(_.draw)
         Outcome(SceneUpdateFragment(allElements))
     }
   }

@@ -248,7 +248,14 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
       model: GameState,
       viewModel: UIState
   ): Outcome[SceneUpdateFragment] = {
-    val tiles = model
+    val tilesBackground = Shape
+      .Box(
+        Rectangle(Point(0, 0), Size(15 * 16, 10 * 16)),
+        Fill.Color(RGBA(0.753, 0.878, 0.188, 1.0))
+      )
+      .withDepth(Depth(4))
+
+    val tiles = List(tilesBackground) ++ model
       .tileMap
       .map
       .toSeq
@@ -267,7 +274,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
           val tint = if (canMove) RGB.White else RGB.Black
 
           Graphic(
-            Rectangle(3 * 16, 0, 16, 16),
+            Rectangle(2 * 16, 16 * 16, 16, 16),
             3,
             Material.ImageEffects(TileAssets.tileSetAssetName).withTint(tint.mix(teamColor))
           ).moveTo(Point(x * 16, y * 16))
@@ -277,7 +284,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
     def drawToMoveUnit(position: Position) =
       List(
         Graphic(
-          Rectangle(3 * 16, 0, 16, 16),
+          Rectangle(2 * 16, 16 * 16, 16, 16),
           3,
           Material.ImageEffects(TileAssets.tileSetAssetName).withAlpha(0.75)
         ).moveTo(Point(position.x * 16, position.y * 16))
@@ -288,7 +295,7 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
         if (model.tileMap.map.contains(p))
           Some(
             Graphic(
-              Rectangle(3 * 16, 2 * 16, 16, 16),
+              Rectangle(6 * 16, 42 * 16, 16, 16),
               2,
               Material.Bitmap(TileAssets.tileSetAssetName)
             ).moveTo(Point(x * 16, y * 16))

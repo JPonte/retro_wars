@@ -37,7 +37,7 @@ object TileAssets {
     val tilesBackground = List(
       Shape
         .Box(
-          Rectangle(Point(0, 0), Size(15 * 16, 10 * 16)),
+          Rectangle(Point(0, 0), Size(17 * 16, 12 * 16)),
           Fill.Color(RGBA(0.753, 0.878, 0.188, 1.0))
         )
         .withDepth(BackgroundDepth)

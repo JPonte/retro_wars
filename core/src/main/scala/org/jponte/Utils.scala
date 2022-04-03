@@ -93,7 +93,7 @@ object Utils {
         Position(1, 2) -> Deployment(Character.Infantry, 1)
       ),
       Map(),
-      Seq(Player("P0"), Player("P1")),
+      List(Player("P0", 5000), Player("P1", 5000)),
       0
     )
   }
@@ -111,36 +111,38 @@ object Utils {
       }
       .toMap
     GameState(
-      TileMap(15, 10, Tile.allTiles, tiles),
+      TileMap(17, 12, Tile.allTiles, tiles),
       Map(
         Position(13, 3) -> Deployment(Character.Infantry, 1)
       ),
       Map(
-        Position(2, 6) -> CityStatus(Some(0), None),
-        Position(1, 5) -> CityStatus(Some(0), None),
-        Position(1, 6) -> CityStatus(Some(0), None),
-        Position(2, 7) -> CityStatus(Some(0), None),
         Position(3, 7) -> CityStatus(Some(0), None),
+        Position(2, 6) -> CityStatus(Some(0), None),
+        Position(2, 7) -> CityStatus(Some(0), None),
+        Position(3, 8) -> CityStatus(Some(0), None),
+        Position(4, 8) -> CityStatus(Some(0), None),
+        Position(13, 3) -> CityStatus(Some(1), None),
         Position(12, 2) -> CityStatus(Some(1), None),
-        Position(11, 1) -> CityStatus(Some(1), None),
-        Position(13, 1) -> CityStatus(Some(1), None),
-        Position(13, 2) -> CityStatus(Some(1), None),
-        Position(13, 3) -> CityStatus(Some(1), None)
+        Position(14, 2) -> CityStatus(Some(1), None),
+        Position(14, 3) -> CityStatus(Some(1), None),
+        Position(14, 4) -> CityStatus(Some(1), None)
       ),
-      Seq(Player("Player 1"), Player("Player 2")),
+      List(Player("Player 1", 5000), Player("Player 2", 5000)),
       0
     )
   }
 
   val testMapStr: String =
-    """3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
-      |3,3,0,2,1,1,1,1,1,0,2,5,0,5,3
-      |3,0,0,2,1,2,3,0,1,4,0,0,8,5,3
-      |3,4,4,1,1,3,3,3,1,0,2,0,1,5,3
-      |3,0,0,1,0,3,3,3,1,4,2,4,1,0,3
-      |3,5,1,1,4,3,3,2,1,1,1,1,1,4,3
-      |3,5,8,0,0,0,0,2,2,0,3,3,1,3,3
-      |3,3,5,5,0,0,0,0,0,0,3,3,0,0,3
-      |3,3,3,3,2,4,2,2,4,1,1,1,4,4,3
-      |3,3,3,3,3,3,3,3,3,3,3,3,3,3,3""".stripMargin
+    """3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+      |3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+      |3,3,3,0,2,1,1,1,1,1,0,2,5,0,5,3,3
+      |3,3,0,0,2,1,2,3,0,1,4,0,0,8,5,3,3
+      |3,3,4,4,1,1,3,3,3,1,0,2,0,1,5,3,3
+      |3,3,0,0,1,0,3,3,3,1,4,2,4,1,0,3,3
+      |3,3,5,1,1,4,3,3,2,1,1,1,1,1,4,3,3
+      |3,3,5,8,0,0,0,0,2,2,0,3,3,1,3,3,3
+      |3,3,3,5,5,0,0,0,0,0,0,3,3,0,0,3,3
+      |3,3,3,3,3,2,4,2,2,4,1,1,1,4,4,3,3
+      |3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+      |3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3""".stripMargin
 }

@@ -20,15 +20,17 @@ case class GameState(
     tileMap: TileMap,
     units: Map[Position, Deployment],
     cities: Map[Position, CityStatus],
-    players: Seq[Player],
+    players: List[Player],
     currentPlayer: Int
 ) {
+
+  def getCurrentPlayer: Player = players(currentPlayer)
+
   def runAction(action: GameAction): Either[String, GameState] = action match {
     case Move(from, target) =>
       val deployment = units.get(from)
       val targetDeployment = units.get(target)
       (deployment, targetDeployment) match {
-
         case (None, _) => Left("No unit in this position")
         case (Some(d), _) if d.player != currentPlayer =>
           Left("Unit doesn't belong to the current player")
@@ -42,7 +44,7 @@ case class GameState(
             .replace(None)
             .focus(_.units)
             .at(target)
-            .replace(Some(d.copy(canMove = false)))
+            .replace(Some(d.copy(canMove = false, hasAction = d.unit.hasActionAfterMove)))
           Right(newState)
       }
     case Attack(from, target) =>
@@ -58,7 +60,9 @@ case class GameState(
         case (_, Some(d)) if d.player == currentPlayer =>
           Left("Target unit is allied")
         case (Some(d), Some(_))
-            if !Utils.inGunRange(from, 1, d.unit.attackRange, tileMap).contains(target) =>
+            if !Utils
+              .inGunRange(from, d.unit.minAttackRange, d.unit.maxAttackRange, tileMap)
+              .contains(target) =>
           Left("Target not in range")
         case (Some(d1), Some(d2)) =>
           val newState = this
@@ -71,12 +75,16 @@ case class GameState(
           Right(newState)
       }
     case EndTurn =>
+      val nextPlayer = (currentPlayer + 1) % players.size
+      val nextPlayerIncome = cities.count(_._2.owner.contains(nextPlayer)) * 1000
       val newState = this
         .focus(_.units)
         .each
         .modify(_.copy(canMove = true, hasAction = true))
         .focus(_.currentPlayer)
-        .modify(currentPlayer => (currentPlayer + 1) % players.size)
+        .replace(nextPlayer)
+        .focus(_.players.index(nextPlayer).funds)
+        .modify(_ + nextPlayerIncome)
       Right(newState)
     case PurchaseUnit(from, character) =>
       val tile = tileMap.tileAt(from)
@@ -84,13 +92,15 @@ case class GameState(
       val cityStatus = cities.get(from)
       (tile, deployment, cityStatus) match {
         case (Some(tile), None, Some(CityStatus(Some(owner), _)))
-            if tile == Tile.Factory && owner == currentPlayer =>
+            if tile == Tile.Factory && owner == currentPlayer && players(
+              currentPlayer
+            ).funds >= character.cost =>
           val newState = this
             .focus(_.units)
             .at(from)
-            .modify(_ =>
-              Some(Deployment(character, currentPlayer, canMove = false, hasAction = false))
-            )
+            .replace(Some(Deployment(character, currentPlayer, canMove = false, hasAction = false)))
+            .focus(_.players.index(currentPlayer).funds)
+            .modify(_ - character.cost)
           Right(newState)
         case _ => Left("Invalid move")
       }
@@ -98,7 +108,6 @@ case class GameState(
       val tile = tileMap.tileAt(from).filter(Tile.cities.contains)
       val deployment = units.get(from).filter(d => Character.infantryCharacters.contains(d.unit))
       val cityStatus = cities.get(from)
-      println((tile, deployment, cityStatus))
       (tile, deployment, cityStatus) match {
         case (_, Some(d), _) if d.player != currentPlayer =>
           Left("Unit doesn't belong to the current player")
@@ -110,39 +119,36 @@ case class GameState(
           Left("City already captured")
         case (Some(t), Some(d), Some(CityStatus(currentOwner, Some(Siege(player, remaining)))))
             if d.player == player =>
-          val newSiege = Siege(player, remaining - d.health)
-          val newState = if (newSiege.remaining <= 0) {
-            this.focus(_.cities).at(from).replace(Some(CityStatus(Some(player), None)))
-          } else {
-            this.focus(_.cities).at(from).replace(Some(CityStatus(currentOwner, Some(newSiege))))
-          }
+          val newSiege = Siege(player, remaining - (d.health / 10))
+          val newState = (if (newSiege.remaining <= 0) {
+                            this
+                              .focus(_.cities)
+                              .at(from)
+                              .replace(Some(CityStatus(Some(player), None)))
+                          } else {
+                            this
+                              .focus(_.cities)
+                              .at(from)
+                              .replace(Some(CityStatus(currentOwner, Some(newSiege))))
+                          })
+            .focus(_.units)
+            .at(from)
+            .modify(_.map(_.copy(canMove = false, hasAction = false)))
           Right(newState)
         case (Some(t), Some(d), cs) if cs.forall(!_.owner.contains(d.player)) =>
-          val newSiege = Siege(d.player, 20 - d.health)
+          val newSiege = Siege(d.player, 20 - (d.health / 10))
           val newState =
             this
               .focus(_.cities)
               .at(from)
               .replace(Some(CityStatus(cs.flatMap(_.owner), Some(newSiege))))
+              .focus(_.units)
+              .at(from)
+              .modify(_.map(_.copy(canMove = false, hasAction = false)))
           Right(newState)
         case _ => Left("Invalid move")
       }
   }
-
-  def show: String =
-    (0 until tileMap.height)
-      .map { y =>
-        (0 until tileMap.width)
-          .map { x =>
-            val pos = Position(x, y)
-            tileMap
-              .tileAt(pos)
-              .map(_.symbol)
-              .getOrElse(" ") + units.get(pos).map(_.unit.symbol.toString).getOrElse(" ")
-          }
-          .mkString(" ")
-      }
-      .mkString("\n")
 }
 
 object GameState {
@@ -160,7 +166,7 @@ object GameState {
       tiles <- c.downField("tileMap").as[TileMap]
       units <- c.downField("units").as[Seq[(Position, Deployment)]]
       cities <- c.downField("cities").as[Seq[(Position, CityStatus)]]
-      players <- c.downField("players").as[Seq[Player]]
+      players <- c.downField("players").as[List[Player]]
       currentPlayer <- c.downField("currentPlayer").as[Int]
     } yield GameState(tiles, units.toMap, cities.toMap, players, currentPlayer)
 

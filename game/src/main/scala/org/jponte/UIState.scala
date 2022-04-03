@@ -20,7 +20,7 @@ case class UnitMoveState(
 case class UnitActionState(
     selectedPosition: Position,
     movingPath: Seq[Position],
-    actionButtons: Seq[Button],
+    actionButtons: ActionBox,
     targets: Set[Position]
 ) extends UIState
 
@@ -33,5 +33,5 @@ case class UnitAttackState(
 
 case class PurchaseUnitActionState(
     selectedPosition: Position,
-    actionButtons: Seq[Button]
+    purchaseMenu: PurchaseMenu
 ) extends UIState

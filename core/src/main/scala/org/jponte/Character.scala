@@ -2,19 +2,21 @@ package org.jponte
 
 case class Character(
     name: String,
-    symbol: Char,
     baseAttack: Int,
-    attackRange: Int,
+    minAttackRange: Int,
+    maxAttackRange: Int,
     moveRange: Int,
-    movementType: MovementType
+    hasActionAfterMove: Boolean,
+    movementType: MovementType,
+    cost: Long
 )
 
 object Character {
   val Infantry: Character =
-    Character("Infantry", 'I', 10, 1, 3, MovementType.Foot)
-  val Tank: Character = Character("Tank", 'T', 50, 1, 5, MovementType.Tread)
-  val Artillery: Character = Character("Artillery", 'A', 25, 3, 5, MovementType.Tread)
-  val Rockets: Character = Character("Rockets", 'R', 50, 5, 5, MovementType.Tires)
+    Character("Infantry", 10, 1, 1, 3, true, MovementType.Foot, 1000)
+  val Tank: Character = Character("Cavalry", 50, 1, 1, 5, true, MovementType.Tread, 5000)
+  val Artillery: Character = Character("Archer", 25, 2, 3, 5, false, MovementType.Tread, 6000)
+  val Rockets: Character = Character("Catapult", 50, 3, 5, 5, false, MovementType.Tires, 10000)
 
   val allCharacters = Seq(Infantry, Tank, Artillery, Rockets)
   val infantryCharacters: Set[Character] = Set(Infantry)

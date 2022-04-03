@@ -169,11 +169,13 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
             )
           val targets =
             gunRange.filter(p => model.units.get(p).exists(_.player != deployment.player))
+          val canAttack = deployment.unit.hasActionAfterMove || movingPath.size == 1
           val isCity = model.tileMap.tileAt(tile).exists(t => Tile.cities.contains(t))
           val cityStatus = model.cities.get(tile).forall(!_.owner.contains(model.currentPlayer))
           val captureAction =
             if (isCity && cityStatus) List("Capture" -> CaptureCityActionEvent) else List()
-          val attackAction = if (targets.nonEmpty) List("Attack" -> AttackActionEvent) else List()
+          val attackAction =
+            if (targets.nonEmpty && canAttack) List("Attack" -> AttackActionEvent) else List()
           val actions = attackAction ++ captureAction ++ List(
             "Wait" -> WaitActionEvent,
             "Cancel" -> CancelActionEvent
@@ -306,12 +308,15 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
     def rangeCheck(checkInfo: Option[Position]) =
       checkInfo.flatMap(p => model.units.get(p).map(p -> _)).toList.flatMap {
         case (position, deployment) =>
-          val movableTiles = Utils.ranges(position, deployment.unit, model)
+          val movableTiles =
+            if (deployment.unit.hasActionAfterMove)
+              Utils.ranges(position, deployment.unit, model).keys
+            else Seq(position)
           val tiles = movableTiles.flatMap { mt =>
             Utils.inGunRange(
-              mt._1,
-              deployment.unit.maxAttackRange,
+              mt,
               deployment.unit.minAttackRange,
+              deployment.unit.maxAttackRange,
               model.tileMap
             )
           }.toSet

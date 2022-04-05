@@ -1,3 +1,5 @@
+import NativePackagerHelper._
+
 ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "3.1.1"
 ThisBuild / organization := "org.jopnte"
@@ -51,6 +53,7 @@ addCommandAlias("buildGameFull", ";compile;game/fullOptJS;game/indigoBuildFull")
 addCommandAlias("runGameFull", ";compile;game/fullOptJS;game/indigoRunFull")
 
 lazy val server = (project in file("server"))
+  .enablePlugins(JavaAppPackaging)
   .settings(
     name := "retro_wars_game",
     libraryDependencies ++= Seq(
@@ -60,6 +63,9 @@ lazy val server = (project in file("server"))
       "org.http4s" %% "http4s-dsl" % http4sVersion,
       "io.circe" %% "circe-generic" % circeVersion,
       "ch.qos.logback" % "logback-classic" % logbackVersion % Runtime
+    ),
+    Universal / mappings ++= directory(
+      baseDirectory.value / ".." / "game" / "target" / "indigoBuildFull"
     )
   )
   .dependsOn(core.jvm)

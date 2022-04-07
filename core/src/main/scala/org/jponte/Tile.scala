@@ -18,6 +18,7 @@ object Tile {
   val Forest: Tile =
     Tile("Forest", 2, Map(Foot -> 1, Boots -> 1, Tires -> 3, Tread -> 2, Air -> 1))
   val Sea: Tile = Tile("Sea", 0, Map(Air -> 1, MovementType.Sea -> 1))
+  val Mountain: Tile = Tile("Mountain", 0, Map(Foot -> 1, Boots -> 1, Air -> 1))
 
   val City: Tile =
     Tile("City", 3, Map(Foot -> 1, Boots -> 1, Tires -> 1, Tread -> 1, Air -> 1))
@@ -37,7 +38,7 @@ object Tile {
   )
 
   val allTiles: Seq[Tile] =
-    Seq(Grass, Road, Forest, Sea, City, Factory, Airport, Port, Headquarters)
+    Seq(Grass, Road, Forest, Sea, City, Factory, Airport, Port, Headquarters, Mountain)
   val cities: Set[Tile] = Set(City, Factory, Airport, Port, Headquarters)
 
   implicit val encodeMovementCost: Encoder[MovementCost] = (mc: MovementCost) => mc.toList.asJson

@@ -172,8 +172,10 @@ object Game extends IndigoDemo[Unit, WebSocketConfig, GameState, UIState] {
           val canAttack = deployment.unit.hasActionAfterMove || movingPath.size == 1
           val isCity = model.tileMap.tileAt(tile).exists(t => Tile.cities.contains(t))
           val cityStatus = model.cities.get(tile).forall(!_.owner.contains(model.currentPlayer))
+          val canCapture = Character.infantryCharacters.contains(deployment.unit)
           val captureAction =
-            if (isCity && cityStatus) List("Capture" -> CaptureCityActionEvent) else List()
+            if (isCity && cityStatus && canCapture) List("Capture" -> CaptureCityActionEvent)
+            else List()
           val attackAction =
             if (targets.nonEmpty && canAttack) List("Attack" -> AttackActionEvent) else List()
           val actions = attackAction ++ captureAction ++ List(

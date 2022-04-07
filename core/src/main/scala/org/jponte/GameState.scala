@@ -45,6 +45,9 @@ case class GameState(
             .focus(_.units)
             .at(target)
             .replace(Some(d.copy(canMove = false, hasAction = d.unit.hasActionAfterMove)))
+            .focus(_.cities)
+            .at(from)
+            .modify(_.map(_.copy(underSiege = None)))
           Right(newState)
       }
     case Attack(from, target) =>
@@ -65,13 +68,36 @@ case class GameState(
               .contains(target) =>
           Left("Target not in range")
         case (Some(d1), Some(d2)) =>
+          val counterAttackMulti =
+            if (d1.unit.maxAttackRange > 1 || d2.unit.maxAttackRange > 1) 0.0 else 1.0
+
+          val d2TileDef = tileMap.tileAt(target).map(_.defense).getOrElse(0)
+          val d1Attack =
+            d1.unit.baseAttack.toDouble * (d1.health.toDouble / 100) * (1.0 - d2TileDef * 0.1)
+          val d2ResultHealth = (d2.health - d1Attack).toInt
+
+          val d1TileDef = tileMap.tileAt(from).map(_.defense).getOrElse(0)
+          val d2Attack =
+            d2.unit.baseAttack.toDouble * (d2ResultHealth.toDouble / 100) * (1.0 - d2TileDef * 0.1)
+          val d1ResultHealth = (d1.health - d2Attack * counterAttackMulti).toInt
+
           val newState = this
             .focus(_.units)
             .at(target)
-            .replace(Some(d2.copy(health = d2.health - d1.unit.baseAttack)).filter(_.health > 0))
+            .replace(Some(d2.copy(health = d2ResultHealth)).filter(_.health > 0))
             .focus(_.units)
             .at(from)
-            .modify(_.map(_.copy(canMove = false, hasAction = false)))
+            .modify(
+              _.map(_.copy(canMove = false, hasAction = false, health = d1ResultHealth)).filter(
+                _.health > 0
+              )
+            )
+            .focus(_.cities)
+            .at(from)
+            .modify(_.map(_.copy(underSiege = None)))
+            .focus(_.cities)
+            .at(target)
+            .modify(c => if (d2ResultHealth <= 0) c.map(_.copy(underSiege = None)) else c)
           Right(newState)
       }
     case EndTurn =>
